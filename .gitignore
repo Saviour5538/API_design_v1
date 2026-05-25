@@ -46,6 +46,9 @@ MANIFEST
 *.sqlite
 *.sqlite3
 
+# Scripts to ignore
+seed_agents.py
+
 # OS
 .DS_Store
 Thumbs.db
