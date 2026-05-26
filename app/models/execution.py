@@ -7,9 +7,8 @@ from app.database import Base
 class Execution(Base):
     __tablename__ = "executions"
 
-    id = Column(String, primary_key=True, default=lambda: f"exec_{uuid.uuid4().hex[:8]}")
+    id = Column(String, primary_key=True, default=lambda: f"exc_{uuid.uuid4().hex[:8]}")
     workflow_id = Column(String, ForeignKey("workflows.id"), nullable=False)
-    triggered_by = Column(String, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="running")  # running | completed | failed | cancelled
     input_values = Column(JSON, nullable=True, default=dict)
     result = Column(JSON, nullable=True)
@@ -19,4 +18,3 @@ class Execution(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     workflow = relationship("Workflow", back_populates="executions")
-    triggered_by_user = relationship("User", back_populates="executions")

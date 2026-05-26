@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
@@ -6,25 +6,15 @@ from datetime import datetime
 from app.database import get_db
 from app.models.workflow import Workflow
 from app.models.category import Category
-from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowListItemOut, WorkflowDetailOut, WorkflowCategoryOut, WorkflowUserOut
-from app.services.auth import get_current_user
+from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowListItemOut, WorkflowDetailOut, WorkflowCategoryOut
 
 router = APIRouter(prefix="/workflows", tags=["Workflows"])
-
-def require_auth(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail={"message": "Not authenticated", "code": 401})
-    try:
-        return get_current_user(authorization.split(" ")[1], db)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail={"message": str(e), "code": 401})
 
 def build_list_item(wf: Workflow) -> WorkflowListItemOut:
     return WorkflowListItemOut(
         id=wf.id, name=wf.name, description=wf.description, status=wf.status,
         category=WorkflowCategoryOut(id=wf.category.id, name=wf.category.name) if wf.category else None,
         node_count=len(wf.nodes),
-        created_by=WorkflowUserOut(id=wf.created_by_user.id, name=wf.created_by_user.name),
         created_at=wf.created_at, updated_at=wf.updated_at
     )
 
@@ -34,8 +24,7 @@ def list_workflows(
     status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user=Depends(require_auth)
+    db: Session = Depends(get_db)
 ):
     query = db.query(Workflow).filter(Workflow.deleted_at == None)
     if search:
@@ -54,7 +43,7 @@ def list_workflows(
     }
 
 @router.get("/{workflow_id}")
-def get_workflow(workflow_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def get_workflow(workflow_id: str, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.deleted_at == None).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
@@ -73,20 +62,19 @@ def get_workflow(workflow_id: str, db: Session = Depends(get_db), user=Depends(r
             id=wf.id, name=wf.name, description=wf.description, status=wf.status,
             category=WorkflowCategoryOut(id=wf.category.id, name=wf.category.name) if wf.category else None,
             nodes=nodes_out,
-            created_by=WorkflowUserOut(id=wf.created_by_user.id, name=wf.created_by_user.name),
             created_at=wf.created_at, updated_at=wf.updated_at
         )
     }
 
 @router.post("", status_code=201)
-def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), user=Depends(require_auth)):
+def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db)):
     if body.category_id:
         if not db.query(Category).filter(Category.id == body.category_id).first():
             raise HTTPException(status_code=422, detail={
                 "message": "Validation failed", "code": 422,
                 "errors": [{"field": "category_id", "issue": "invalid category"}]
             })
-    wf = Workflow(name=body.name, description=body.description, category_id=body.category_id, created_by=user.id)
+    wf = Workflow(name=body.name, description=body.description, category_id=body.category_id)
     db.add(wf)
     db.commit()
     db.refresh(wf)
@@ -96,13 +84,12 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), user=De
             id=wf.id, name=wf.name, description=wf.description, status=wf.status,
             category=WorkflowCategoryOut(id=wf.category.id, name=wf.category.name) if wf.category else None,
             nodes=[],
-            created_by=WorkflowUserOut(id=wf.created_by_user.id, name=wf.created_by_user.name),
             created_at=wf.created_at, updated_at=wf.updated_at
         )
     }
 
 @router.patch("/{workflow_id}")
-def update_workflow(workflow_id: str, body: WorkflowUpdate, db: Session = Depends(get_db), user=Depends(require_auth)):
+def update_workflow(workflow_id: str, body: WorkflowUpdate, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.deleted_at == None).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
@@ -115,7 +102,7 @@ def update_workflow(workflow_id: str, body: WorkflowUpdate, db: Session = Depend
     return {"status": "success", "data": build_list_item(wf)}
 
 @router.delete("/{workflow_id}")
-def delete_workflow(workflow_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def delete_workflow(workflow_id: str, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.deleted_at == None).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})

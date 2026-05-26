@@ -9,13 +9,6 @@ class WorkflowCategoryOut(BaseModel):
     class Config:
         from_attributes = True
 
-class WorkflowUserOut(BaseModel):
-    id: str
-    name: str
-
-    class Config:
-        from_attributes = True
-
 class WorkflowCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -34,7 +27,6 @@ class WorkflowListItemOut(BaseModel):
     status: str
     category: Optional[WorkflowCategoryOut]
     node_count: int = 0
-    created_by: WorkflowUserOut
     created_at: datetime
     updated_at: datetime
 
@@ -48,7 +40,6 @@ class WorkflowDetailOut(BaseModel):
     status: str
     category: Optional[WorkflowCategoryOut]
     nodes: List[Any] = []
-    created_by: WorkflowUserOut
     created_at: datetime
     updated_at: datetime
 

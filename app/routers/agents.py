@@ -1,21 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
 from app.database import get_db
 from app.models.agent import Agent
 from app.schemas.agent import AgentOut, AgentDetailOut, AgentCategoryOut, AgentListOut
-from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
-
-def require_auth(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail={"message": "Not authenticated", "code": 401})
-    try:
-        return get_current_user(authorization.split(" ")[1], db)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail={"message": str(e), "code": 401})
 
 def build_agent_out(agent: Agent) -> AgentOut:
     return AgentOut(
@@ -35,8 +26,7 @@ def list_agents(
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user=Depends(require_auth)
+    db: Session = Depends(get_db)
 ):
     query = db.query(Agent)
     if category_id:
@@ -55,7 +45,7 @@ def list_agents(
     }
 
 @router.get("/{agent_id}")
-def get_agent(agent_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def get_agent(agent_id: str, db: Session = Depends(get_db)):
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail={"message": "Agent not found", "code": 404})

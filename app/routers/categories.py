@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
@@ -6,24 +6,14 @@ from app.database import get_db
 from app.models.category import Category
 from app.models.agent import Agent
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryOut, CategoryListOut
-from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
-
-def require_auth(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail={"message": "Not authenticated", "code": 401})
-    try:
-        return get_current_user(authorization.split(" ")[1], db)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail={"message": str(e), "code": 401})
 
 @router.get("")
 def list_categories(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user=Depends(require_auth)
+    db: Session = Depends(get_db)
 ):
     total = db.query(Category).count()
     categories = db.query(Category).offset((page - 1) * limit).limit(limit).all()
@@ -37,7 +27,7 @@ def list_categories(
     return {"status": "success", "data": {"items": items, "total": total, "page": page, "limit": limit, "total_pages": ceil(total / limit)}}
 
 @router.get("/{category_id}")
-def get_category(category_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def get_category(category_id: str, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
@@ -48,7 +38,7 @@ def get_category(category_id: str, db: Session = Depends(get_db), user=Depends(r
     )}
 
 @router.post("", status_code=201)
-def create_category(body: CategoryCreate, db: Session = Depends(get_db), user=Depends(require_auth)):
+def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     if db.query(Category).filter(Category.name == body.name).first():
         raise HTTPException(status_code=422, detail={
             "message": "Validation failed", "code": 422,
@@ -64,7 +54,7 @@ def create_category(body: CategoryCreate, db: Session = Depends(get_db), user=De
     )}
 
 @router.patch("/{category_id}")
-def update_category(category_id: str, body: CategoryUpdate, db: Session = Depends(get_db), user=Depends(require_auth)):
+def update_category(category_id: str, body: CategoryUpdate, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
@@ -81,7 +71,7 @@ def update_category(category_id: str, body: CategoryUpdate, db: Session = Depend
     )}
 
 @router.delete("/{category_id}")
-def delete_category(category_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def delete_category(category_id: str, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})

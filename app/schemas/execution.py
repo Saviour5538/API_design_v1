@@ -9,13 +9,6 @@ class ExecutionWorkflowOut(BaseModel):
     class Config:
         from_attributes = True
 
-class ExecutionUserOut(BaseModel):
-    id: str
-    name: str
-
-    class Config:
-        from_attributes = True
-
 class ExecutionCreate(BaseModel):
     workflow_id: str
     input_values: Optional[Dict[str, Any]] = {}
@@ -30,7 +23,6 @@ class ExecutionOut(BaseModel):
     execution_id: str
     workflow: ExecutionWorkflowOut
     status: str
-    triggered_by: ExecutionUserOut
     started_at: datetime
     completed_at: Optional[datetime]
     result: Optional[Any]

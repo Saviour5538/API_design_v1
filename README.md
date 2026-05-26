@@ -2,11 +2,13 @@
 
 A REST API for managing AI agent workflows built with FastAPI and SQLite. This API powers a platform that lets users browse pre-built AI agents and compose them into automated workflows that run on n8n.
 
+Authentication is handled externally — all endpoints are open.
+
 ---
 
 ## What This Is
 
-The platform has around 70 pre-built AI agents (Invoice Processor, Expense Classifier, etc.), each backed by an n8n workflow. Users can:
+The platform has pre-built AI agents (Invoice Processor, Expense Classifier, etc.), each backed by an n8n workflow. Users can:
 
 1. Browse agents by category
 2. Create their own workflows by chaining agents as nodes
@@ -23,9 +25,7 @@ The platform has around 70 pre-built AI agents (Invoice Processor, Expense Class
 | FastAPI | Web framework, auto-generates Swagger UI |
 | SQLAlchemy | ORM for database models |
 | SQLite | Database (file-based, zero install) |
-| Pydantic v2 | Request/response validation and schemas |
-| python-jose | JWT token generation and verification |
-| passlib + bcrypt 4.0.1 | Password hashing |
+| Pydantic v2 + pydantic-settings | Request/response validation and env config |
 | httpx | HTTP client for calling n8n |
 | uvicorn | ASGI server to run the app |
 
@@ -40,31 +40,29 @@ API_Design/
 │   ├── database.py       # SQLAlchemy engine and session setup
 │   ├── config.py         # Reads .env via pydantic-settings
 │   ├── models/           # SQLAlchemy database models
-│   │   ├── user.py
 │   │   ├── category.py
 │   │   ├── agent.py
 │   │   ├── workflow.py
 │   │   ├── node.py
 │   │   └── execution.py
 │   ├── schemas/          # Pydantic request/response schemas
-│   │   ├── auth.py
 │   │   ├── category.py
 │   │   ├── agent.py
 │   │   ├── workflow.py
 │   │   ├── node.py
 │   │   └── execution.py
 │   ├── routers/          # Endpoint definitions
-│   │   ├── auth.py
 │   │   ├── categories.py
 │   │   ├── agents.py
 │   │   ├── workflows.py
 │   │   ├── nodes.py
 │   │   └── executions.py
 │   └── services/
-│       ├── auth.py       # JWT logic, password hashing, get_current_user
 │       └── n8n.py        # HTTP calls to trigger/cancel n8n workflows
 ├── seed_agents.py        # Script to seed test agents into the database
 ├── .env                  # Environment variables (not committed)
+├── .env.example          # Template for .env
+├── API_REFERENCE.md      # Full endpoint and payload reference
 ├── requirements.txt
 └── workflow.db           # SQLite database file (auto-created on first run)
 ```
@@ -90,10 +88,6 @@ pip install -r requirements.txt
 
 ```env
 DATABASE_URL=sqlite:///./workflow.db
-SECRET_KEY=your-super-secret-key-change-this-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-REFRESH_TOKEN_EXPIRE_DAYS=7
 N8N_BASE_URL=http://localhost:5678
 N8N_API_KEY=your-n8n-api-key
 ```
@@ -101,12 +95,14 @@ N8N_API_KEY=your-n8n-api-key
 ### 4. Run the server
 
 ```powershell
-venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000
+venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 The database tables are created automatically on first run.
 
 ### 5. Seed test agents (optional, for testing)
+
+First create a "Finance" category via the API, then run:
 
 ```powershell
 venv\Scripts\python seed_agents.py
@@ -118,39 +114,14 @@ Navigate to `http://localhost:8000/docs`
 
 ---
 
-## Authentication
-
-The API uses JWT Bearer tokens.
-
-1. Register at `POST /api/v1/auth/register`
-2. Login at `POST /api/v1/auth/login` — returns `access_token` and `refresh_token`
-3. Click **Authorize** in Swagger UI and paste the `access_token`
-4. All protected endpoints will now send the token automatically
-
-Tokens expire after 1 hour. Use `POST /api/v1/auth/refresh` with the `refresh_token` to get a new access token without logging in again.
-
----
-
 ## API Endpoints
 
-Base URL: `https://workflow.aifirstenteprise.ai/api/v1`
-Local: `http://localhost:8000/api/v1`
+Base URL: `http://localhost:8000/api/v1`
 
 ### Health
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Check if server is online |
-
-### Auth
-| Method | Path | Description |
-|---|---|---|
-| POST | `/auth/register` | Create a new account |
-| POST | `/auth/login` | Login and get tokens |
-| POST | `/auth/logout` | Logout |
-| POST | `/auth/refresh` | Refresh access token |
-| GET | `/auth/me` | Get current user profile |
-| PATCH | `/auth/me` | Update name or email |
-| PATCH | `/auth/me/password` | Change password |
 
 ### Categories
 | Method | Path | Description |
@@ -200,6 +171,8 @@ Only `active` workflows with at least one node can be executed.
 | POST | `/executions/{execution_id}/cancel` | Cancel a running execution |
 | POST | `/executions/{execution_id}/webhook` | n8n webhook to update execution result |
 
+For full request/response payloads see [API_REFERENCE.md](API_REFERENCE.md).
+
 ---
 
 ## Resource IDs
@@ -208,7 +181,6 @@ Every resource has a prefixed unique ID generated automatically:
 
 | Resource | Prefix | Example |
 |---|---|---|
-| User | `usr_` | `usr_4b1e9c2d` |
 | Category | `cat_` | `cat_6c28cdbb` |
 | Agent | `agt_` | `agt_3f9a1b2c` |
 | Workflow | `wfl_` | `wfl_7d4e2a1f` |
@@ -222,16 +194,12 @@ Every resource has a prefixed unique ID generated automatically:
 All responses follow the same envelope:
 
 ```json
-// Single resource
 { "status": "success", "data": { ... } }
 
-// List with pagination
 { "status": "success", "data": { "items": [...], "total": 10, "page": 1, "limit": 10, "total_pages": 1 } }
 
-// Delete / action
 { "status": "success", "message": "Resource deleted successfully" }
 
-// Error
 { "status": "error", "message": "Not found", "code": 404 }
 ```
 
@@ -250,8 +218,7 @@ draft → active → (execute) → completed / failed / cancelled
 
 ---
 
-## Known Issues / Notes
+## Notes
 
-- `bcrypt` must be pinned to `4.0.1` — version 5.x is incompatible with `passlib 1.7.4`
 - If port 8000 is already in use: `Get-Process python | Stop-Process -Force`, then restart
 - The SQLite database file `workflow.db` is created in the project root automatically

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
@@ -6,26 +6,16 @@ from datetime import datetime
 from app.database import get_db
 from app.models.execution import Execution
 from app.models.workflow import Workflow
-from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionListOut, WebhookUpdate, ExecutionWorkflowOut, ExecutionUserOut
-from app.services.auth import get_current_user
+from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionListOut, WebhookUpdate, ExecutionWorkflowOut
 from app.services.n8n import trigger_n8n_workflow, cancel_n8n_execution
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
-
-def require_auth(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail={"message": "Not authenticated", "code": 401})
-    try:
-        return get_current_user(authorization.split(" ")[1], db)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail={"message": str(e), "code": 401})
 
 def build_execution_out(ex: Execution) -> ExecutionOut:
     return ExecutionOut(
         execution_id=ex.id,
         workflow=ExecutionWorkflowOut(id=ex.workflow.id, name=ex.workflow.name),
         status=ex.status,
-        triggered_by=ExecutionUserOut(id=ex.triggered_by_user.id, name=ex.triggered_by_user.name),
         started_at=ex.started_at,
         completed_at=ex.completed_at,
         result=ex.result,
@@ -33,7 +23,7 @@ def build_execution_out(ex: Execution) -> ExecutionOut:
     )
 
 @router.post("", status_code=201)
-async def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db), user=Depends(require_auth)):
+async def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == body.workflow_id, Workflow.deleted_at == None).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
@@ -42,7 +32,7 @@ async def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)
     if not wf.nodes:
         raise HTTPException(status_code=422, detail={"message": "Cannot execute a workflow with no nodes", "code": 422})
 
-    execution = Execution(workflow_id=wf.id, triggered_by=user.id, input_values=body.input_values or {})
+    execution = Execution(workflow_id=wf.id, input_values=body.input_values or {})
     db.add(execution)
     db.commit()
     db.refresh(execution)
@@ -66,8 +56,7 @@ def list_executions(
     status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user=Depends(require_auth)
+    db: Session = Depends(get_db)
 ):
     query = db.query(Execution)
     if workflow_id:
@@ -86,14 +75,14 @@ def list_executions(
     }
 
 @router.get("/{execution_id}")
-def get_execution(execution_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+def get_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     return {"status": "success", "data": build_execution_out(ex)}
 
 @router.post("/{execution_id}/cancel")
-async def cancel_execution(execution_id: str, db: Session = Depends(get_db), user=Depends(require_auth)):
+async def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
