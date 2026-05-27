@@ -1,6 +1,6 @@
 # Workflow Builder API
 
-A REST API for managing AI agent workflows built with FastAPI and SQLite. This API powers a platform that lets users browse pre-built AI agents and compose them into automated workflows that run on n8n.
+A REST API for managing AI agent workflows built with FastAPI and PostgreSQL (Supabase). This API powers a platform that lets users browse pre-built AI agents and compose them into automated workflows.
 
 Authentication is handled externally — all endpoints are open.
 
@@ -8,12 +8,13 @@ Authentication is handled externally — all endpoints are open.
 
 ## What This Is
 
-The platform has pre-built AI agents (Invoice Processor, Expense Classifier, etc.), each backed by an n8n workflow. Users can:
+The platform has pre-built AI agents (HTTP GET, JSON Parser, Database Query, etc.), each defined with input/output schemas. Users can:
 
 1. Browse agents by category
-2. Create their own workflows by chaining agents as nodes
-3. Execute workflows (which trigger n8n behind the scenes)
-4. Track execution history and results
+2. Create workflows by adding agents as nodes
+3. Connect nodes with edges to define execution flow
+4. Set node positions on a visual canvas (ui_meta)
+5. Execute workflows and track per-execution history
 
 ---
 
@@ -24,9 +25,9 @@ The platform has pre-built AI agents (Invoice Processor, Expense Classifier, etc
 | Python 3.x | Language |
 | FastAPI | Web framework, auto-generates Swagger UI |
 | SQLAlchemy | ORM for database models |
-| SQLite | Database (file-based, zero install) |
+| PostgreSQL (Supabase) | Shared cloud database |
 | Pydantic v2 + pydantic-settings | Request/response validation and env config |
-| httpx | HTTP client for calling n8n |
+| psycopg2-binary | PostgreSQL driver |
 | uvicorn | ASGI server to run the app |
 
 ---
@@ -36,42 +37,67 @@ The platform has pre-built AI agents (Invoice Processor, Expense Classifier, etc
 ```
 API_Design/
 ├── app/
-│   ├── main.py           # App entry point, router registration, OpenAPI config
-│   ├── database.py       # SQLAlchemy engine and session setup
-│   ├── config.py         # Reads .env via pydantic-settings
-│   ├── models/           # SQLAlchemy database models
+│   ├── main.py                      # App entry point, router registration
+│   ├── database.py                  # SQLAlchemy engine and session setup
+│   ├── config.py                    # Reads .env via pydantic-settings
+│   ├── models/                      # SQLAlchemy database models
+│   │   ├── category.py              # node_categories table
+│   │   ├── agent.py                 # nodes table
+│   │   ├── workflow.py              # workflows table
+│   │   ├── node.py                  # workflow_nodes table
+│   │   ├── workflow_node_config.py  # workflow_node_configs table
+│   │   ├── workflow_edge.py         # workflow_edges table
+│   │   ├── workflow_ui_meta.py      # workflow_ui_meta table
+│   │   ├── execution.py             # workflow_executions table
+│   │   ├── node_execution.py        # node_executions table
+│   │   └── execution_join_counter.py# execution_join_counters table
+│   ├── schemas/                     # Pydantic request/response schemas
 │   │   ├── category.py
 │   │   ├── agent.py
 │   │   ├── workflow.py
 │   │   ├── node.py
+│   │   ├── workflow_edge.py
+│   │   ├── node_execution.py
 │   │   └── execution.py
-│   ├── schemas/          # Pydantic request/response schemas
-│   │   ├── category.py
-│   │   ├── agent.py
-│   │   ├── workflow.py
-│   │   ├── node.py
-│   │   └── execution.py
-│   ├── routers/          # Endpoint definitions
+│   ├── routers/                     # Endpoint definitions
 │   │   ├── categories.py
 │   │   ├── agents.py
 │   │   ├── workflows.py
 │   │   ├── nodes.py
+│   │   ├── edges.py
 │   │   └── executions.py
 │   └── services/
-│       └── n8n.py        # HTTP calls to trigger/cancel n8n workflows
-├── seed_agents.py        # Script to seed test agents into the database
-├── .env                  # Environment variables (not committed)
-├── .env.example          # Template for .env
-├── API_REFERENCE.md      # Full endpoint and payload reference
+│       └── n8n.py
+├── .env                             # Environment variables (not committed)
+├── .env.example                     # Template for .env
 ├── requirements.txt
-└── workflow.db           # SQLite database file (auto-created on first run)
+└── README.md
 ```
+
+---
+
+## Database Schema
+
+This API connects to a shared Supabase PostgreSQL database. It uses 10 tables:
+
+| Table | Purpose | Access |
+|---|---|---|
+| `node_categories` | Agent categories with color labels | Read-only |
+| `nodes` | Pre-built agents with input/output/configs schema | Read-only |
+| `workflows` | User-created workflows | Read/Write |
+| `workflow_nodes` | Agents added to a workflow | Read/Write |
+| `workflow_node_configs` | Config values per node (var_name + value) | Read/Write |
+| `workflow_edges` | Directed connections between nodes | Read/Write |
+| `workflow_ui_meta` | Canvas x/y position per node | Read/Write |
+| `workflow_executions` | Execution runs of a workflow | Read/Write |
+| `node_executions` | Per-node execution tracking | Read |
+| `execution_join_counters` | Internal execution engine table | Internal |
 
 ---
 
 ## Setup
 
-### 1. Create and activate virtual environment
+### 1. Clone and create virtual environment
 
 ```powershell
 python -m venv venv
@@ -87,18 +113,20 @@ pip install -r requirements.txt
 ### 3. Create `.env` file
 
 ```env
-DATABASE_URL=sqlite:///./workflow.db
+DATABASE_URL=postgresql://user:password@host:5432/postgres?sslmode=require
 N8N_BASE_URL=http://localhost:5678
 N8N_API_KEY=your-n8n-api-key
 ```
 
+> Note: If your password contains `@`, URL-encode it as `%40`
+
 ### 4. Run the server
 
 ```powershell
-venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --reload
 ```
 
-The database tables are created automatically on first run.
+Tables are created automatically on first run if they don't exist.
 
 ### 5. Seed test agents (optional, for testing)
 
@@ -126,81 +154,114 @@ Base URL: `http://localhost:8000/api/v1`
 ### Categories
 | Method | Path | Description |
 |---|---|---|
-| POST | `/categories` | Create a category |
-| GET | `/categories` | List all categories |
-| GET | `/categories/{category_id}` | Get a single category |
-| PATCH | `/categories/{category_id}` | Update a category |
-| DELETE | `/categories/{category_id}` | Delete a category |
+| GET | `/categories` | List all categories with agent count |
+| GET | `/categories/{id}` | Get a single category |
 
 ### Agents
-Agents are pre-seeded by admins — end users can only read them.
+Agents are managed by the DB team — read-only via API.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/agents` | List all agents (filter by category, search by name) |
-| GET | `/agents/{agent_id}` | Get a single agent with its input schema |
+| GET | `/agents` | List all agents (filter by `category_id`, search by `name`) |
+| GET | `/agents/{id}` | Get a single agent with input/output/configs schema |
 
 ### Workflows
 | Method | Path | Description |
 |---|---|---|
 | POST | `/workflows` | Create a new workflow |
-| GET | `/workflows` | List workflows (filter by status, search by name) |
-| GET | `/workflows/{workflow_id}` | Get workflow with all its nodes |
-| PATCH | `/workflows/{workflow_id}` | Update name, description, or status |
-| DELETE | `/workflows/{workflow_id}` | Soft delete a workflow |
+| GET | `/workflows` | List workflows (filter by `status`, search by `name`) |
+| GET | `/workflows/{id}` | Get workflow with nodes, edges, ui_meta |
+| PATCH | `/workflows/{id}` | Update name, description, or status |
+| DELETE | `/workflows/{id}` | Delete workflow (blocked if execution history exists) |
 
 ### Nodes
-Nodes are the agents inside a workflow, in order. A workflow must be in `draft` status to add/edit/remove nodes.
+A workflow must be in `DRAFT` status to add/edit/remove nodes.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/workflows/{workflow_id}/nodes` | Add a node (agent) to a workflow |
-| GET | `/workflows/{workflow_id}/nodes` | List all nodes in a workflow |
-| GET | `/workflows/{workflow_id}/nodes/{node_id}` | Get a single node |
-| PATCH | `/workflows/{workflow_id}/nodes/{node_id}` | Update node order or input values |
-| DELETE | `/workflows/{workflow_id}/nodes/{node_id}` | Remove a node from a workflow |
+| POST | `/workflows/{id}/nodes` | Add a node with optional configs and ui_meta |
+| GET | `/workflows/{id}/nodes` | List all nodes in a workflow |
+| GET | `/workflows/{id}/nodes/{node_id}` | Get a single node |
+| PATCH | `/workflows/{id}/nodes/{node_id}` | Update node configs or ui_meta position |
+| DELETE | `/workflows/{id}/nodes/{node_id}` | Remove a node (blocked if execution history exists) |
+
+### Edges
+Directed connections between nodes. Workflow must be in `DRAFT` to edit.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/workflows/{id}/edges` | Connect two nodes (src → dest) |
+| GET | `/workflows/{id}/edges` | List all edges in a workflow |
+| DELETE | `/workflows/{id}/edges/{edge_id}` | Remove an edge |
 
 ### Executions
-Only `active` workflows with at least one node can be executed.
+Only `ACTIVE` workflows with at least one node can be executed.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/executions` | Trigger a workflow execution (calls n8n) |
-| GET | `/executions` | List executions (filter by workflow_id or status) |
-| GET | `/executions/{execution_id}` | Get execution details and result |
-| POST | `/executions/{execution_id}/cancel` | Cancel a running execution |
-| POST | `/executions/{execution_id}/webhook` | n8n webhook to update execution result |
-
-For full request/response payloads see [API_REFERENCE.md](API_REFERENCE.md).
+| POST | `/executions` | Trigger a workflow execution |
+| GET | `/executions` | List executions (filter by `workflow_id` or `status`) |
+| GET | `/executions/{id}` | Get execution details with node_executions |
+| PATCH | `/executions/{id}/cancel` | Cancel a pending or running execution |
+| PATCH | `/executions/{id}/complete` | Mark execution as completed |
 
 ---
 
-## Resource IDs
+## Request/Response Examples
 
-Every resource has a prefixed unique ID generated automatically:
+### Create Workflow
+```json
+POST /api/v1/workflows
+{
+    "name": "My Workflow",
+    "description": "Optional description"
+}
+```
 
-| Resource | Prefix | Example |
-|---|---|---|
-| Category | `cat_` | `cat_6c28cdbb` |
-| Agent | `agt_` | `agt_3f9a1b2c` |
-| Workflow | `wfl_` | `wfl_7d4e2a1f` |
-| Node | `nod_` | `nod_1c8b5e3a` |
-| Execution | `exc_` | `exc_9a2f4d7c` |
+### Add Node
+```json
+POST /api/v1/workflows/{id}/nodes
+{
+    "node_id": "uuid-of-agent",
+    "configs": [
+        {"var_name": "url", "value": "https://api.example.com"}
+    ],
+    "ui_meta": {"x": 100, "y": 200}
+}
+```
+
+### Add Edge
+```json
+POST /api/v1/workflows/{id}/edges
+{
+    "src_id": "workflow-node-uuid",
+    "dest_id": "workflow-node-uuid"
+}
+```
+
+### Trigger Execution
+```json
+POST /api/v1/executions
+{
+    "workflow_id": "workflow-uuid",
+    "input_variables": {"key": "value"}
+}
+```
 
 ---
 
 ## Response Format
 
-All responses follow the same envelope:
+All responses use the same envelope:
 
 ```json
 { "status": "success", "data": { ... } }
 
 { "status": "success", "data": { "items": [...], "total": 10, "page": 1, "limit": 10, "total_pages": 1 } }
 
-{ "status": "success", "message": "Resource deleted successfully" }
+{ "status": "success", "message": "Deleted successfully" }
 
-{ "status": "error", "message": "Not found", "code": 404 }
+{ "detail": { "message": "Not found", "code": 404 } }
 ```
 
 ---
@@ -208,17 +269,29 @@ All responses follow the same envelope:
 ## Workflow Status Lifecycle
 
 ```
-draft → active → (execute) → completed / failed / cancelled
+DRAFT → ACTIVE → (execute) → PENDING → RUNNING → COMPLETED / FAILED
 ```
 
-- A new workflow starts as `draft`
-- Nodes can only be added/edited/removed when status is `draft`
-- Set status to `active` before executing
-- Cannot delete a workflow that has a running execution
+- New workflows start as `DRAFT`
+- Nodes and edges can only be added/edited/removed in `DRAFT`
+- Set status to `ACTIVE` to allow execution
+- Set status to `INACTIVE` to disable without deleting
+- Cannot delete a workflow that has execution history
+
+## Execution Status Values
+
+| Status | Meaning |
+|---|---|
+| `PENDING` | Triggered, not yet picked up |
+| `RUNNING` | Currently executing |
+| `COMPLETED` | Finished successfully |
+| `FAILED` | Failed or cancelled |
 
 ---
 
 ## Notes
 
-- If port 8000 is already in use: `Get-Process python | Stop-Process -Force`, then restart
-- The SQLite database file `workflow.db` is created in the project root automatically
+- All IDs are UUIDs
+- Status enums are uppercase: `DRAFT`, `ACTIVE`, `INACTIVE`, `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`
+- If port 8000 is in use: `Get-Process python | Stop-Process -Force`
+- Swagger UI available at `http://localhost:8000/docs`
