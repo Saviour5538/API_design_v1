@@ -19,7 +19,7 @@ class ExecutionOut(BaseModel):
     status: str
     input_variables: Optional[Dict[str, Any]]
     output_variables: Optional[Any]
-    started_at: datetime
+    started_at: Optional[datetime]
     finished_at: Optional[datetime]
     created_at: datetime
     node_executions: List[Any] = []

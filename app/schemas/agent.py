@@ -9,11 +9,10 @@ class AgentCategoryOut(BaseModel):
     class Config:
         from_attributes = True
 
-class NodeConfigOut(BaseModel):
-    id: str
+class AgentConfigOut(BaseModel):
     name: Optional[str]
-    data_type: Optional[str]
     var_name: Optional[str]
+    data_type: Optional[str]
 
     class Config:
         from_attributes = True
@@ -25,7 +24,7 @@ class AgentOut(BaseModel):
     category: Optional[AgentCategoryOut]
     input: Optional[Any]
     output: Optional[Any]
-    configs: List[NodeConfigOut] = []
+    configs: Optional[Any] = []
 
     class Config:
         from_attributes = True

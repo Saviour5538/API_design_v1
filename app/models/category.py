@@ -1,10 +1,11 @@
 from sqlalchemy import Column, String, DateTime
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from app.database import Base
 
 class Category(Base):
     __tablename__ = "node_categories"
 
-    id = Column(String, primary_key=True)
+    id = Column(PGUUID(as_uuid=False), primary_key=True)
     name = Column(String, nullable=False)
     color = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)

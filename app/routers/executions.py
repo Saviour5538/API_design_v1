@@ -50,7 +50,7 @@ def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)):
     if not wf.nodes:
         raise HTTPException(status_code=422, detail={"message": "Cannot execute a workflow with no nodes", "code": 422})
 
-    execution = Execution(workflow_id=wf.id, input_variables=body.input_variables or {})
+    execution = Execution(workflow_id=wf.id, input_variables=body.input_variables or {}, started_at=datetime.utcnow())
     db.add(execution)
     db.commit()
     db.refresh(execution)
@@ -110,9 +110,9 @@ def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
-    if ex.status != "running":
-        raise HTTPException(status_code=422, detail={"message": "Cannot cancel an execution that is not running", "code": 422})
-    ex.status = "cancelled"
+    if ex.status not in ("PENDING", "RUNNING"):
+        raise HTTPException(status_code=422, detail={"message": "Can only cancel a pending or running execution", "code": 422})
+    ex.status = "FAILED"
     ex.finished_at = datetime.utcnow()
     db.commit()
     return {"status": "success", "message": "Execution cancelled successfully"}
