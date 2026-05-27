@@ -1,32 +1,39 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Optional, List
+
+class NodeConfigIn(BaseModel):
+    var_name: str
+    value: Optional[str] = None
+
+class NodeConfigOut(BaseModel):
+    id: str
+    var_name: str
+    value: Optional[str]
+
+    class Config:
+        from_attributes = True
 
 class NodeAgentOut(BaseModel):
     id: str
     name: str
-    category: str
+    category: Optional[str]
 
     class Config:
         from_attributes = True
 
 class NodeCreate(BaseModel):
-    name: str
-    agent_id: str
-    order: int
-    input_values: Optional[Dict[str, Any]] = {}
+    node_id: str
+    configs: Optional[List[NodeConfigIn]] = []
 
 class NodeUpdate(BaseModel):
-    name: Optional[str] = None
-    order: Optional[int] = None
-    input_values: Optional[Dict[str, Any]] = None
+    configs: Optional[List[NodeConfigIn]] = None
 
 class NodeOut(BaseModel):
     id: str
-    name: str
-    order: int
+    node_id: str
     agent: NodeAgentOut
-    input_values: Dict[str, Any]
+    configs: List[NodeConfigOut] = []
     workflow_id: str
     created_at: datetime
     updated_at: datetime

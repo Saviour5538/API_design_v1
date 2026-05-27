@@ -7,6 +7,7 @@ from app.models.category import Category
 from app.models.agent import Agent
 from app.models.workflow import Workflow
 from app.models.node import Node
+from app.models.workflow_node_config import WorkflowNodeConfig
 from app.models.execution import Execution
 
 Base.metadata.create_all(bind=engine)

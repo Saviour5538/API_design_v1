@@ -6,47 +6,35 @@ from datetime import datetime
 from app.database import get_db
 from app.models.execution import Execution
 from app.models.workflow import Workflow
-from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionListOut, WebhookUpdate, ExecutionWorkflowOut
-from app.services.n8n import trigger_n8n_workflow, cancel_n8n_execution
+from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionWorkflowOut
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
 def build_execution_out(ex: Execution) -> ExecutionOut:
     return ExecutionOut(
-        execution_id=ex.id,
+        id=ex.id,
         workflow=ExecutionWorkflowOut(id=ex.workflow.id, name=ex.workflow.name),
         status=ex.status,
+        input_variables=ex.input_variables,
+        output_variables=ex.output_variables,
         started_at=ex.started_at,
-        completed_at=ex.completed_at,
-        result=ex.result,
-        error=ex.error
+        finished_at=ex.finished_at,
+        created_at=ex.created_at
     )
 
 @router.post("", status_code=201)
-async def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)):
-    wf = db.query(Workflow).filter(Workflow.id == body.workflow_id, Workflow.deleted_at == None).first()
+def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)):
+    wf = db.query(Workflow).filter(Workflow.id == body.workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
-    if wf.status != "active":
+    if wf.status != "ACTIVE":
         raise HTTPException(status_code=422, detail={"message": "Only active workflows can be executed", "code": 422})
     if not wf.nodes:
         raise HTTPException(status_code=422, detail={"message": "Cannot execute a workflow with no nodes", "code": 422})
 
-    execution = Execution(workflow_id=wf.id, input_values=body.input_values or {})
+    execution = Execution(workflow_id=wf.id, input_variables=body.input_variables or {})
     db.add(execution)
     db.commit()
-    db.refresh(execution)
-
-    try:
-        n8n_id = await trigger_n8n_workflow(wf.nodes[0].agent.n8n_workflow_id or "", body.input_values or {})
-        execution.n8n_execution_id = n8n_id
-        db.commit()
-    except Exception:
-        execution.status = "failed"
-        execution.error = "Failed to connect to n8n"
-        execution.completed_at = datetime.utcnow()
-        db.commit()
-
     db.refresh(execution)
     return {"status": "success", "data": build_execution_out(execution)}
 
@@ -81,31 +69,26 @@ def get_execution(execution_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     return {"status": "success", "data": build_execution_out(ex)}
 
-@router.post("/{execution_id}/cancel")
-async def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
+@router.patch("/{execution_id}/complete")
+def complete_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     if ex.status != "running":
-        raise HTTPException(status_code=422, detail={"message": "Cannot cancel an execution that is already completed", "code": 422})
-
-    if ex.n8n_execution_id:
-        await cancel_n8n_execution(ex.n8n_execution_id)
-
-    ex.status = "cancelled"
-    ex.completed_at = datetime.utcnow()
+        raise HTTPException(status_code=422, detail={"message": "Execution is not running", "code": 422})
+    ex.status = "completed"
+    ex.finished_at = datetime.utcnow()
     db.commit()
-    return {"status": "success", "message": "Execution cancelled successfully"}
+    return {"status": "success", "message": "Execution marked as completed"}
 
-@router.post("/{execution_id}/webhook")
-def execution_webhook(execution_id: str, body: WebhookUpdate, db: Session = Depends(get_db)):
+@router.patch("/{execution_id}/cancel")
+def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
-    ex.status = body.status
-    ex.result = body.result
-    ex.error = body.error
-    ex.n8n_execution_id = body.n8n_execution_id
-    ex.completed_at = datetime.utcnow()
+    if ex.status != "running":
+        raise HTTPException(status_code=422, detail={"message": "Cannot cancel an execution that is not running", "code": 422})
+    ex.status = "cancelled"
+    ex.finished_at = datetime.utcnow()
     db.commit()
-    return {"status": "success", "message": "Execution result recorded"}
+    return {"status": "success", "message": "Execution cancelled successfully"}

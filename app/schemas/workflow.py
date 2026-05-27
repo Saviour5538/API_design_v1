@@ -2,30 +2,21 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List, Any
 
-class WorkflowCategoryOut(BaseModel):
-    id: str
-    name: str
-
-    class Config:
-        from_attributes = True
-
 class WorkflowCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    category_id: Optional[str] = None
 
 class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
-    category_id: Optional[str] = None
 
 class WorkflowListItemOut(BaseModel):
     id: str
     name: str
     description: Optional[str]
     status: str
-    category: Optional[WorkflowCategoryOut]
+    version: int
     node_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -38,7 +29,7 @@ class WorkflowDetailOut(BaseModel):
     name: str
     description: Optional[str]
     status: str
-    category: Optional[WorkflowCategoryOut]
+    version: int
     nodes: List[Any] = []
     created_at: datetime
     updated_at: datetime

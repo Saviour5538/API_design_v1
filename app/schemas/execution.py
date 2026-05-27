@@ -11,22 +11,17 @@ class ExecutionWorkflowOut(BaseModel):
 
 class ExecutionCreate(BaseModel):
     workflow_id: str
-    input_values: Optional[Dict[str, Any]] = {}
-
-class WebhookUpdate(BaseModel):
-    n8n_execution_id: str
-    status: str
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    input_variables: Optional[Dict[str, Any]] = {}
 
 class ExecutionOut(BaseModel):
-    execution_id: str
+    id: str
     workflow: ExecutionWorkflowOut
     status: str
+    input_variables: Optional[Dict[str, Any]]
+    output_variables: Optional[Any]
     started_at: datetime
-    completed_at: Optional[datetime]
-    result: Optional[Any]
-    error: Optional[str]
+    finished_at: Optional[datetime]
+    created_at: datetime
 
     class Config:
         from_attributes = True

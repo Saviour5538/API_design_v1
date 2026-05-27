@@ -1,34 +1,34 @@
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 
 class AgentCategoryOut(BaseModel):
     id: str
     name: str
+    color: Optional[str]
 
     class Config:
         from_attributes = True
 
-class AgentInput(BaseModel):
-    name: str
-    type: str
-    required: bool
+class NodeConfigOut(BaseModel):
+    id: str
+    name: Optional[str]
+    data_type: Optional[str]
+    var_name: Optional[str]
+
+    class Config:
+        from_attributes = True
 
 class AgentOut(BaseModel):
     id: str
     name: str
     description: Optional[str]
-    category: AgentCategoryOut
-    inputs: List[Any]
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    category: Optional[AgentCategoryOut]
+    input: Optional[Any]
+    output: Optional[Any]
+    configs: List[NodeConfigOut] = []
 
     class Config:
         from_attributes = True
-
-class AgentDetailOut(AgentOut):
-    n8n_workflow_id: Optional[str]
 
 class AgentListOut(BaseModel):
     items: List[AgentOut]

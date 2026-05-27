@@ -1,18 +1,18 @@
-from sqlalchemy import Column, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 import uuid
 from app.database import Base
 
-class Node(Base):
-    __tablename__ = "workflow_nodes"
+class WorkflowNodeConfig(Base):
+    __tablename__ = "workflow_node_configs"
 
     id = Column(PGUUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
-    workflow_id = Column(PGUUID(as_uuid=False), ForeignKey("workflows.id"), nullable=False)
-    node_id = Column(PGUUID(as_uuid=False), nullable=False)
+    workflow_node_id = Column(PGUUID(as_uuid=False), ForeignKey("workflow_nodes.id"), nullable=False)
+    var_name = Column(String, nullable=False)
+    value = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    workflow = relationship("Workflow", back_populates="nodes")
-    configs = relationship("WorkflowNodeConfig", back_populates="workflow_node", cascade="all, delete-orphan")
+    workflow_node = relationship("Node", back_populates="configs")
