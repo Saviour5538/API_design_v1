@@ -6,10 +6,7 @@ from app.database import Base, engine
 from app.models.category import Category
 from app.models.agent import Agent
 from app.models.workflow import Workflow
-from app.models.node import Node
-from app.models.workflow_node_config import WorkflowNodeConfig
-from app.models.workflow_ui_meta import WorkflowUIMeta
-from app.models.workflow_edge import WorkflowEdge
+from app.models.workflow_data import WorkflowData
 from app.models.execution import Execution
 from app.models.node_execution import NodeExecution
 from app.models.execution_join_counter import ExecutionJoinCounter

@@ -12,5 +12,7 @@ class Agent(Base):
     input = Column(JSON, nullable=True)
     output = Column(JSON, nullable=True)
     configs = Column(JSON, nullable=True)
+    code_path = Column(String, nullable=True)
+    created_by = Column(PGUUID(as_uuid=False), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

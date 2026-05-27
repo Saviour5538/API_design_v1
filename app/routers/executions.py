@@ -2,9 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from app.database import get_db
+from app.models.execution import Execution
+from app.models.workflow import Workflow
+from app.models.workflow_data import WorkflowData
+from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionWorkflowOut
+from app.schemas.node_execution import NodeExecutionOut
 
 def is_valid_uuid(val: str) -> bool:
     try:
@@ -12,10 +17,6 @@ def is_valid_uuid(val: str) -> bool:
         return True
     except ValueError:
         return False
-from app.models.execution import Execution
-from app.models.workflow import Workflow
-from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionWorkflowOut
-from app.schemas.node_execution import NodeExecutionOut
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
@@ -47,10 +48,12 @@ def trigger_execution(body: ExecutionCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     if wf.status != "ACTIVE":
         raise HTTPException(status_code=422, detail={"message": "Only active workflows can be executed", "code": 422})
-    if not wf.nodes:
+
+    wd = db.query(WorkflowData).filter(WorkflowData.workflow_id == wf.id).first()
+    if not wd or not wd.nodes:
         raise HTTPException(status_code=422, detail={"message": "Cannot execute a workflow with no nodes", "code": 422})
 
-    execution = Execution(workflow_id=wf.id, input_variables=body.input_variables or {}, started_at=datetime.utcnow())
+    execution = Execution(workflow_id=wf.id, input_variables=body.input_variables or {}, started_at=datetime.now(timezone.utc))
     db.add(execution)
     db.commit()
     db.refresh(execution)
@@ -96,10 +99,10 @@ def complete_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
-    if ex.status != "running":
+    if ex.status != "RUNNING":
         raise HTTPException(status_code=422, detail={"message": "Execution is not running", "code": 422})
-    ex.status = "completed"
-    ex.finished_at = datetime.utcnow()
+    ex.status = "COMPLETED"
+    ex.finished_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "success", "message": "Execution marked as completed"}
 
@@ -110,9 +113,9 @@ def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
-    if ex.status not in ("PENDING", "RUNNING"):
-        raise HTTPException(status_code=422, detail={"message": "Can only cancel a pending or running execution", "code": 422})
-    ex.status = "FAILED"
-    ex.finished_at = datetime.utcnow()
+    if ex.status not in ("PENDING", "RUNNING", "HOLD", "SCHEDULED"):
+        raise HTTPException(status_code=422, detail={"message": "Can only cancel a pending, scheduled, on-hold, or running execution", "code": 422})
+    ex.status = "CANCELLED"
+    ex.finished_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "success", "message": "Execution cancelled successfully"}

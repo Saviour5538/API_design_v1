@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 import uuid
 from app.database import get_db
 from app.models.workflow import Workflow
-from app.models.node import Node
+from app.models.workflow_data import WorkflowData
 from app.models.agent import Agent
 from app.models.category import Category
-from app.models.workflow_node_config import WorkflowNodeConfig
-from app.models.workflow_ui_meta import WorkflowUIMeta
-from app.schemas.node import NodeCreate, NodeUpdate, NodeOut, NodeAgentOut, NodeConfigOut, UIMeta
+from app.schemas.node import NodeCreate, NodeUpdate
 
 router = APIRouter(prefix="/workflows", tags=["Nodes"])
 
@@ -27,44 +26,55 @@ def get_workflow_or_404(workflow_id: str, db: Session) -> Workflow:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     return wf
 
-def build_node_out(node: Node, db: Session) -> NodeOut:
-    agent = db.query(Agent).filter(Agent.id == node.node_id).first()
+def get_or_create_workflow_data(workflow_id: str, db: Session) -> WorkflowData:
+    wd = db.query(WorkflowData).filter(WorkflowData.workflow_id == workflow_id).first()
+    if not wd:
+        wd = WorkflowData(workflow_id=workflow_id, nodes=[], edges=[])
+        db.add(wd)
+        db.commit()
+        db.refresh(wd)
+    return wd
+
+def enrich_node(node_data: dict, workflow_id: str, db: Session) -> dict:
+    agent_id = node_data.get("node_id")
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
     cat = db.query(Category).filter(Category.id == agent.category_id).first() if (agent and agent.category_id) else None
-    cfgs = [NodeConfigOut(id=c.id, var_name=c.var_name, value=c.value) for c in node.configs]
-    ui = UIMeta(x=node.ui_meta.x, y=node.ui_meta.y) if node.ui_meta else None
-    return NodeOut(
-        id=node.id,
-        node_id=node.node_id,
-        agent=NodeAgentOut(
-            id=agent.id, name=agent.name, category=cat.name if cat else None
-        ) if agent else NodeAgentOut(id=node.node_id, name="Unknown", category=None),
-        configs=cfgs,
-        ui_meta=ui,
-        workflow_id=node.workflow_id,
-        created_at=node.created_at, updated_at=node.updated_at
-    )
+    return {
+        "id": node_data["id"],
+        "node_id": node_data["node_id"],
+        "agent": {
+            "id": agent.id if agent else node_data["node_id"],
+            "name": agent.name if agent else "Unknown",
+            "category": cat.name if cat else None
+        },
+        "config": node_data.get("config", []),
+        "ui_meta": node_data.get("ui_meta"),
+        "workflow_id": workflow_id
+    }
 
 @router.get("/{workflow_id}/nodes")
 def list_nodes(workflow_id: str, db: Session = Depends(get_db)):
     get_workflow_or_404(workflow_id, db)
-    nodes = db.query(Node).filter(Node.workflow_id == workflow_id).all()
-    return {"status": "success", "data": {"items": [build_node_out(n, db) for n in nodes], "total": len(nodes)}}
+    wd = get_or_create_workflow_data(workflow_id, db)
+    nodes = wd.nodes or []
+    return {"status": "success", "data": {"items": [enrich_node(n, workflow_id, db) for n in nodes], "total": len(nodes)}}
 
 @router.get("/{workflow_id}/nodes/{node_id}")
 def get_node(workflow_id: str, node_id: str, db: Session = Depends(get_db)):
     get_workflow_or_404(workflow_id, db)
     if not is_valid_uuid(node_id):
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
-    node = db.query(Node).filter(Node.id == node_id, Node.workflow_id == workflow_id).first()
-    if not node:
+    wd = get_or_create_workflow_data(workflow_id, db)
+    node_data = next((n for n in (wd.nodes or []) if n["id"] == node_id), None)
+    if not node_data:
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
-    return {"status": "success", "data": build_node_out(node, db)}
+    return {"status": "success", "data": enrich_node(node_data, workflow_id, db)}
 
 @router.post("/{workflow_id}/nodes", status_code=201)
 def create_node(workflow_id: str, body: NodeCreate, db: Session = Depends(get_db)):
     wf = get_workflow_or_404(workflow_id, db)
-    if wf.status == "ACTIVE":
-        raise HTTPException(status_code=422, detail={"message": "Cannot add nodes to an active workflow, set it to draft first", "code": 422})
+    if wf.status != "DRAFT":
+        raise HTTPException(status_code=422, detail={"message": "Cannot add nodes to a non-draft workflow", "code": 422})
 
     if not is_valid_uuid(body.node_id):
         raise HTTPException(status_code=422, detail={"message": "Validation failed", "code": 422, "errors": [{"field": "node_id", "issue": "must be a valid UUID"}]})
@@ -73,64 +83,73 @@ def create_node(workflow_id: str, body: NodeCreate, db: Session = Depends(get_db
     if not agent:
         raise HTTPException(status_code=422, detail={"message": "Validation failed", "code": 422, "errors": [{"field": "node_id", "issue": "agent not found"}]})
 
-    node = Node(node_id=body.node_id, workflow_id=workflow_id)
-    db.add(node)
-    db.flush()
+    wd = get_or_create_workflow_data(workflow_id, db)
+    nodes = list(wd.nodes or [])
 
-    for cfg in (body.configs or []):
-        db.add(WorkflowNodeConfig(workflow_node_id=node.id, var_name=cfg.var_name, value=cfg.value))
-
-    if body.ui_meta is not None:
-        db.add(WorkflowUIMeta(workflow_node_id=node.id, x=body.ui_meta.x, y=body.ui_meta.y))
-
+    new_node = {
+        "id": str(uuid.uuid4()),
+        "node_id": body.node_id,
+        "config": [{"var_name": c.var_name, "value": c.value} for c in (body.config or [])],
+        "ui_meta": {"x": body.ui_meta.x, "y": body.ui_meta.y, "label": body.ui_meta.label} if body.ui_meta else {"x": 0, "y": 0, "label": None}
+    }
+    nodes.append(new_node)
+    wd.nodes = nodes
+    flag_modified(wd, "nodes")
     db.commit()
-    db.refresh(node)
-    return {"status": "success", "data": build_node_out(node, db)}
+    db.refresh(wd)
+    return {"status": "success", "data": enrich_node(new_node, workflow_id, db)}
 
 @router.patch("/{workflow_id}/nodes/{node_id}")
 def update_node(workflow_id: str, node_id: str, body: NodeUpdate, db: Session = Depends(get_db)):
     wf = get_workflow_or_404(workflow_id, db)
-    if wf.status == "ACTIVE":
-        raise HTTPException(status_code=422, detail={"message": "Cannot edit nodes in an active workflow, set it to draft first", "code": 422})
+    if wf.status != "DRAFT":
+        raise HTTPException(status_code=422, detail={"message": "Cannot edit nodes in a non-draft workflow", "code": 422})
 
     if not is_valid_uuid(node_id):
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
-    node = db.query(Node).filter(Node.id == node_id, Node.workflow_id == workflow_id).first()
-    if not node:
+
+    wd = get_or_create_workflow_data(workflow_id, db)
+    nodes = list(wd.nodes or [])
+    idx = next((i for i, n in enumerate(nodes) if n["id"] == node_id), None)
+    if idx is None:
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
 
-    if body.configs is not None:
-        db.query(WorkflowNodeConfig).filter(WorkflowNodeConfig.workflow_node_id == node.id).delete()
-        for cfg in body.configs:
-            db.add(WorkflowNodeConfig(workflow_node_id=node.id, var_name=cfg.var_name, value=cfg.value))
+    if body.config is not None:
+        nodes[idx]["config"] = [{"var_name": c.var_name, "value": c.value} for c in body.config]
 
     if body.ui_meta is not None:
-        meta = db.query(WorkflowUIMeta).filter(WorkflowUIMeta.workflow_node_id == node.id).first()
-        if meta:
-            meta.x = body.ui_meta.x
-            meta.y = body.ui_meta.y
-        else:
-            db.add(WorkflowUIMeta(workflow_node_id=node.id, x=body.ui_meta.x, y=body.ui_meta.y))
+        nodes[idx]["ui_meta"] = {"x": body.ui_meta.x, "y": body.ui_meta.y, "label": body.ui_meta.label}
 
+    wd.nodes = nodes
+    flag_modified(wd, "nodes")
     db.commit()
-    db.refresh(node)
-    return {"status": "success", "data": build_node_out(node, db)}
+    db.refresh(wd)
+    return {"status": "success", "data": enrich_node(nodes[idx], workflow_id, db)}
 
 @router.delete("/{workflow_id}/nodes/{node_id}")
 def delete_node(workflow_id: str, node_id: str, db: Session = Depends(get_db)):
     wf = get_workflow_or_404(workflow_id, db)
-    if wf.status == "ACTIVE":
-        raise HTTPException(status_code=422, detail={"message": "Cannot remove nodes from an active workflow, set it to draft first", "code": 422})
+    if wf.status != "DRAFT":
+        raise HTTPException(status_code=422, detail={"message": "Cannot remove nodes from a non-draft workflow", "code": 422})
 
     if not is_valid_uuid(node_id):
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
-    node = db.query(Node).filter(Node.id == node_id, Node.workflow_id == workflow_id).first()
-    if not node:
+
+    wd = get_or_create_workflow_data(workflow_id, db)
+    nodes = list(wd.nodes or [])
+    node_data = next((n for n in nodes if n["id"] == node_id), None)
+    if not node_data:
         raise HTTPException(status_code=404, detail={"message": "Node not found in this workflow", "code": 404})
 
-    if node.node_executions:
+    from app.models.node_execution import NodeExecution
+    has_history = db.query(NodeExecution).filter(NodeExecution.workflow_node_id == node_id).first()
+    if has_history:
         raise HTTPException(status_code=422, detail={"message": "Cannot remove a node that has execution history", "code": 422})
 
-    db.delete(node)
+    wd.nodes = [n for n in nodes if n["id"] != node_id]
+    edges = [e for e in (wd.edges or []) if e["src_id"] != node_id and e["dest_id"] != node_id]
+    wd.edges = edges
+    flag_modified(wd, "nodes")
+    flag_modified(wd, "edges")
     db.commit()
     return {"status": "success", "message": "Node removed from workflow successfully"}

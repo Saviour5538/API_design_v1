@@ -13,9 +13,9 @@ class Workflow(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="DRAFT")
     version = Column(Integer, default=1)
-    created_by = Column(String, nullable=True)
+    created_by = Column(PGUUID(as_uuid=False), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    nodes = relationship("Node", back_populates="workflow")
+    workflow_data = relationship("WorkflowData", back_populates="workflow", uselist=False)
     executions = relationship("Execution", back_populates="workflow")

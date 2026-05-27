@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from datetime import datetime
 from typing import Optional, List
 
 class NodeConfigIn(BaseModel):
@@ -7,46 +6,35 @@ class NodeConfigIn(BaseModel):
     value: Optional[str] = None
 
 class NodeConfigOut(BaseModel):
-    id: str
     var_name: str
     value: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 class UIMeta(BaseModel):
     x: int = 0
     y: int = 0
+    label: Optional[str] = None
 
 class NodeAgentOut(BaseModel):
     id: str
     name: str
     category: Optional[str]
 
-    class Config:
-        from_attributes = True
-
 class NodeCreate(BaseModel):
     node_id: str
-    configs: Optional[List[NodeConfigIn]] = []
+    config: Optional[List[NodeConfigIn]] = []
     ui_meta: Optional[UIMeta] = None
 
 class NodeUpdate(BaseModel):
-    configs: Optional[List[NodeConfigIn]] = None
+    config: Optional[List[NodeConfigIn]] = None
     ui_meta: Optional[UIMeta] = None
 
 class NodeOut(BaseModel):
     id: str
     node_id: str
     agent: NodeAgentOut
-    configs: List[NodeConfigOut] = []
+    config: List[NodeConfigOut] = []
     ui_meta: Optional[UIMeta] = None
     workflow_id: str
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class NodeListOut(BaseModel):
     items: List[NodeOut]

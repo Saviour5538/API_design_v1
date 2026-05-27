@@ -8,5 +8,6 @@ class Category(Base):
     id = Column(PGUUID(as_uuid=False), primary_key=True)
     name = Column(String, nullable=False)
     color = Column(String, nullable=True)
+    created_by = Column(PGUUID(as_uuid=False), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
