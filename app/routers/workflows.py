@@ -2,9 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
+import uuid
 from app.database import get_db
 from app.models.workflow import Workflow
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowListItemOut, WorkflowDetailOut
+
+def is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 
 router = APIRouter(prefix="/workflows", tags=["Workflows"])
 
@@ -44,6 +52,8 @@ def list_workflows(
 
 @router.get("/{workflow_id}")
 def get_workflow(workflow_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(workflow_id):
+        raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
@@ -90,6 +100,8 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{workflow_id}")
 def update_workflow(workflow_id: str, body: WorkflowUpdate, db: Session = Depends(get_db)):
+    if not is_valid_uuid(workflow_id):
+        raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
@@ -109,6 +121,8 @@ def update_workflow(workflow_id: str, body: WorkflowUpdate, db: Session = Depend
 
 @router.delete("/{workflow_id}")
 def delete_workflow(workflow_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(workflow_id):
+        raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})

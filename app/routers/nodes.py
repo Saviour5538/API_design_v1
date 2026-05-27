@@ -1,6 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import uuid
 from app.database import get_db
+
+def is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 from app.models.workflow import Workflow
 from app.models.node import Node
 from app.models.agent import Agent
@@ -11,6 +19,8 @@ from app.schemas.node import NodeCreate, NodeUpdate, NodeOut, NodeAgentOut, Node
 router = APIRouter(prefix="/workflows", tags=["Nodes"])
 
 def get_workflow_or_404(workflow_id: str, db: Session) -> Workflow:
+    if not is_valid_uuid(workflow_id):
+        raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})

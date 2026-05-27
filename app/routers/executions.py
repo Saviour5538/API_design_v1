@@ -3,7 +3,15 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
 from datetime import datetime
+import uuid
 from app.database import get_db
+
+def is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 from app.models.execution import Execution
 from app.models.workflow import Workflow
 from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionWorkflowOut
@@ -64,6 +72,8 @@ def list_executions(
 
 @router.get("/{execution_id}")
 def get_execution(execution_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(execution_id):
+        raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
@@ -71,6 +81,8 @@ def get_execution(execution_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{execution_id}/complete")
 def complete_execution(execution_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(execution_id):
+        raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
@@ -83,6 +95,8 @@ def complete_execution(execution_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{execution_id}/cancel")
 def cancel_execution(execution_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(execution_id):
+        raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
     ex = db.query(Execution).filter(Execution.id == execution_id).first()
     if not ex:
         raise HTTPException(status_code=404, detail={"message": "Execution not found", "code": 404})
