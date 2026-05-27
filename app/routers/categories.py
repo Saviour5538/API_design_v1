@@ -2,7 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
+import uuid
 from app.database import get_db
+
+def is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 from app.models.category import Category
 from app.models.agent import Agent
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryOut
@@ -25,6 +33,8 @@ def list_categories(
 
 @router.get("/{category_id}")
 def get_category(category_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(category_id):
+        raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
@@ -46,6 +56,8 @@ def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{category_id}")
 def update_category(category_id: str, body: CategoryUpdate, db: Session = Depends(get_db)):
+    if not is_valid_uuid(category_id):
+        raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
@@ -60,6 +72,8 @@ def update_category(category_id: str, body: CategoryUpdate, db: Session = Depend
 
 @router.delete("/{category_id}")
 def delete_category(category_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(category_id):
+        raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail={"message": "Category not found", "code": 404})

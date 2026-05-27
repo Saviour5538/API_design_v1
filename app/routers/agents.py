@@ -2,7 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from math import ceil
+import uuid
 from app.database import get_db
+
+def is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 from app.models.agent import Agent
 from app.models.category import Category
 from app.schemas.agent import AgentOut, AgentCategoryOut
@@ -50,6 +58,8 @@ def list_agents(
 
 @router.get("/{agent_id}")
 def get_agent(agent_id: str, db: Session = Depends(get_db)):
+    if not is_valid_uuid(agent_id):
+        raise HTTPException(status_code=404, detail={"message": "Agent not found", "code": 404})
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail={"message": "Agent not found", "code": 404})
