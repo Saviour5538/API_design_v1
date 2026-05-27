@@ -19,3 +19,4 @@ class Execution(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     workflow = relationship("Workflow", back_populates="executions")
+    node_executions = relationship("NodeExecution", back_populates="execution", cascade="all, delete-orphan")

@@ -16,3 +16,5 @@ class Node(Base):
 
     workflow = relationship("Workflow", back_populates="nodes")
     configs = relationship("WorkflowNodeConfig", back_populates="workflow_node", cascade="all, delete-orphan")
+    ui_meta = relationship("WorkflowUIMeta", back_populates="workflow_node", uselist=False, cascade="all, delete-orphan")
+    node_executions = relationship("NodeExecution", back_populates="workflow_node")

@@ -8,11 +8,15 @@ from app.models.agent import Agent
 from app.models.workflow import Workflow
 from app.models.node import Node
 from app.models.workflow_node_config import WorkflowNodeConfig
+from app.models.workflow_ui_meta import WorkflowUIMeta
+from app.models.workflow_edge import WorkflowEdge
 from app.models.execution import Execution
+from app.models.node_execution import NodeExecution
+from app.models.execution_join_counter import ExecutionJoinCounter
 
 Base.metadata.create_all(bind=engine)
 
-from app.routers import categories, agents, workflows, nodes, executions
+from app.routers import categories, agents, workflows, nodes, executions, edges
 
 app = FastAPI(
     title="Workflow Builder API",
@@ -37,6 +41,7 @@ app.include_router(categories.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(workflows.router, prefix="/api/v1")
 app.include_router(nodes.router, prefix="/api/v1")
+app.include_router(edges.router, prefix="/api/v1")
 app.include_router(executions.router, prefix="/api/v1")
 
 def custom_openapi():

@@ -22,6 +22,7 @@ class ExecutionOut(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime]
     created_at: datetime
+    node_executions: List[Any] = []
 
     class Config:
         from_attributes = True

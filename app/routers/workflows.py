@@ -57,28 +57,37 @@ def get_workflow(workflow_id: str, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
-    from app.schemas.node import NodeOut, NodeAgentOut, NodeConfigOut
+    from app.schemas.node import NodeOut, NodeAgentOut, NodeConfigOut, UIMeta
+    from app.schemas.workflow_edge import EdgeOut
     from app.models.node import Node
     from app.models.agent import Agent
     from app.models.category import Category
+    from app.models.workflow_edge import WorkflowEdge
     nodes_out = []
+    node_ids = []
     for n in wf.nodes:
+        node_ids.append(n.id)
         agent = db.query(Agent).filter(Agent.id == n.node_id).first()
         cat = db.query(Category).filter(Category.id == agent.category_id).first() if (agent and agent.category_id) else None
         cfgs = [NodeConfigOut(id=c.id, var_name=c.var_name, value=c.value) for c in n.configs]
+        ui = UIMeta(x=n.ui_meta.x, y=n.ui_meta.y) if n.ui_meta else None
         nodes_out.append(NodeOut(
             id=n.id, node_id=n.node_id,
             agent=NodeAgentOut(id=agent.id, name=agent.name, category=cat.name if cat else None) if agent else NodeAgentOut(id=n.node_id, name="Unknown", category=None),
-            configs=cfgs,
+            configs=cfgs, ui_meta=ui,
             workflow_id=n.workflow_id,
             created_at=n.created_at, updated_at=n.updated_at
         ))
+    edges_out = []
+    if node_ids:
+        edges = db.query(WorkflowEdge).filter(WorkflowEdge.src_id.in_(node_ids)).all()
+        edges_out = [EdgeOut(id=e.id, src_id=e.src_id, dest_id=e.dest_id, created_at=e.created_at) for e in edges]
     return {
         "status": "success",
         "data": WorkflowDetailOut(
             id=wf.id, name=wf.name, description=wf.description, status=wf.status,
             version=wf.version,
-            nodes=nodes_out,
+            nodes=nodes_out, edges=edges_out,
             created_at=wf.created_at, updated_at=wf.updated_at
         )
     }
@@ -126,9 +135,10 @@ def delete_workflow(workflow_id: str, db: Session = Depends(get_db)):
     wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not wf:
         raise HTTPException(status_code=404, detail={"message": "Workflow not found", "code": 404})
-    running = any(e.status == "RUNNING" for e in wf.executions)
-    if running:
+    if any(e.status == "RUNNING" for e in wf.executions):
         raise HTTPException(status_code=422, detail={"message": "Cannot delete a workflow that is currently running", "code": 422})
+    if wf.executions:
+        raise HTTPException(status_code=422, detail={"message": "Cannot delete a workflow that has execution history", "code": 422})
     db.delete(wf)
     db.commit()
     return {"status": "success", "message": "Workflow deleted successfully"}

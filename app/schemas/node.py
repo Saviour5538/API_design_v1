@@ -14,6 +14,10 @@ class NodeConfigOut(BaseModel):
     class Config:
         from_attributes = True
 
+class UIMeta(BaseModel):
+    x: int = 0
+    y: int = 0
+
 class NodeAgentOut(BaseModel):
     id: str
     name: str
@@ -25,15 +29,18 @@ class NodeAgentOut(BaseModel):
 class NodeCreate(BaseModel):
     node_id: str
     configs: Optional[List[NodeConfigIn]] = []
+    ui_meta: Optional[UIMeta] = None
 
 class NodeUpdate(BaseModel):
     configs: Optional[List[NodeConfigIn]] = None
+    ui_meta: Optional[UIMeta] = None
 
 class NodeOut(BaseModel):
     id: str
     node_id: str
     agent: NodeAgentOut
     configs: List[NodeConfigOut] = []
+    ui_meta: Optional[UIMeta] = None
     workflow_id: str
     created_at: datetime
     updated_at: datetime

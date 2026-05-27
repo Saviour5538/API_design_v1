@@ -15,10 +15,19 @@ def is_valid_uuid(val: str) -> bool:
 from app.models.execution import Execution
 from app.models.workflow import Workflow
 from app.schemas.execution import ExecutionCreate, ExecutionOut, ExecutionWorkflowOut
+from app.schemas.node_execution import NodeExecutionOut
 
 router = APIRouter(prefix="/executions", tags=["Executions"])
 
 def build_execution_out(ex: Execution) -> ExecutionOut:
+    node_execs = [
+        NodeExecutionOut(
+            id=ne.id, workflow_node_id=ne.workflow_node_id, status=ne.status,
+            input_snapshot=ne.input_snapshot, output_snapshot=ne.output_snapshot,
+            error_log=ne.error_log, started_at=ne.started_at,
+            finished_at=ne.finished_at, created_at=ne.created_at
+        ) for ne in ex.node_executions
+    ]
     return ExecutionOut(
         id=ex.id,
         workflow=ExecutionWorkflowOut(id=ex.workflow.id, name=ex.workflow.name),
@@ -27,7 +36,8 @@ def build_execution_out(ex: Execution) -> ExecutionOut:
         output_variables=ex.output_variables,
         started_at=ex.started_at,
         finished_at=ex.finished_at,
-        created_at=ex.created_at
+        created_at=ex.created_at,
+        node_executions=node_execs
     )
 
 @router.post("", status_code=201)

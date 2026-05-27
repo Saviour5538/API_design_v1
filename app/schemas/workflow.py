@@ -31,6 +31,7 @@ class WorkflowDetailOut(BaseModel):
     status: str
     version: int
     nodes: List[Any] = []
+    edges: List[Any] = []
     created_at: datetime
     updated_at: datetime
 
